@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Perception</title>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --bg-dark: #0a0a0f;
+            --bg-panel: #12121a;
+            --bg-card: #1a1a25;
+            --border: #2a2a3a;
+            --text: #e0e0e0;
+            --text-muted: #808090;
+            --accent: #4a9eff;
+            --accent-dim: #2a5a9f;
+            --new-object: #00ff88;
+            --object-left: #ff4466;
+            --motion-change: #ffaa00;
+        }
+        
+        body {
+            background: var(--bg-dark);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            grid-template-rows: auto 1fr;
+            gap: 16px;
+            padding: 16px;
+            max-width: 1600px;
+            margin: 0 auto;
+            min-height: 100vh;
+        }
+        
+        .header {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            background: var(--bg-panel);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        
+        .header h1 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+        
+        .system-status {
+            display: flex;
+            gap: 20px;
+            font-size: 0.85rem;
+        }
+        
+        .stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .stat-value {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--text);
+        }
+        
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+        
+        .video-section {
+            background: var(--bg-panel);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .video-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .video-header h2 {
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/10;
+            background: #000;
+        }
+        
+        .video-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .caption-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 16px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.8));
+        }
+        
+        .caption-text {
+            font-size: 1rem;
+            line-height: 1.5;
+            color: #fff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        }
+        
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .panel {
+            background: var(--bg-panel);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+        
+        .panel-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .panel-header h3 {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text);
+        }
+        
+        .event-count {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: var(--bg-card);
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        
+        .panel-content {
+            padding: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .panel-content::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .panel-content::-webkit-scrollbar-track {
+            background: var(--bg-card);
+        }
+        
+        .panel-content::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+        
+        .event-item {
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            background: var(--bg-card);
+            border-radius: 8px;
+            border-left: 3px solid var(--accent);
+            animation: slideIn 0.2s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .event-item.new_object { border-left-color: var(--new-object); }
+        .event-item.object_left { border-left-color: var(--object-left); }
+        .event-item.action_complete { border-left-color: var(--motion-change); }
+        .event-item.caption_update { border-left-color: var(--accent); }
+        
+        .event-type {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+        
+        .event-description {
+            font-size: 0.85rem;
+            color: var(--text);
+            line-height: 1.4;
+        }
+        
+        .event-time {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+        
+        .event-empty {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+        
+        .objects-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .object-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            background: var(--bg-card);
+            border-radius: 8px;
+        }
+        
+        .object-id {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--accent-dim);
+            color: #fff;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .object-info {
+            flex: 1;
+        }
+        
+        .object-class {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .object-state {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        
+        .object-phase {
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .object-phase.in_progress {
+            background: rgba(255, 0, 0, 0.3);
+            color: #ff6666;
+        }
+        
+        .object-phase.stable {
+            background: rgba(0, 255, 0, 0.3);
+            color: #66ff66;
+        }
+        
+        .object-speed {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+        
+        .scene-info {
+            padding: 12px;
+            background: var(--bg-card);
+            border-radius: 8px;
+        }
+        
+        .scene-summary {
+            font-size: 0.9rem;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+        
+        .latency-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        
+        .latency-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            padding: 6px 8px;
+            background: var(--bg-panel);
+            border-radius: 4px;
+        }
+        
+        .latency-label {
+            color: var(--text-muted);
+        }
+        
+        .latency-value {
+            font-weight: 600;
+            font-family: monospace;
+        }
+        
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--risk-critical);
+        }
+        
+        .status-dot.connected {
+            background: var(--risk-low);
+        }
+        
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+            
+            .panel {
+                flex: 1;
+                min-width: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Robot Perception</h1>
+            <div class="system-status">
+                <div class="stat">
+                    <span class="stat-value" id="frameCount">0</span>
+                    <span class="stat-label">Frames</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="captionCount">0</span>
+                    <span class="stat-label">Captions</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="objectCount">0</span>
+                    <span class="stat-label">Objects</span>
+                </div>
+                <div class="connection-status">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="connectionStatus">Disconnected</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="video-section">
+            <div class="video-header">
+                <h2>Live Stream</h2>
+            </div>
+            <div class="video-container">
+                <img src="{{ url_for('video_feed') }}" alt="Video Stream" id="videoFeed">
+                <div class="caption-overlay">
+                    <p class="caption-text" id="captionText">Waiting for temporal understanding...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>Event Feed</h3>
+                    <span class="event-count" id="eventCount">0 events</span>
+                </div>
+                <div class="panel-content" id="eventFeed">
+                    <div class="event-empty">No events yet. Start the pipeline to see events.</div>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>Tracked Objects</h3>
+                    <span class="event-count" id="trackedCount">0 tracked</span>
+                </div>
+                <div class="panel-content">
+                    <div class="objects-list" id="objectsList">
+                        <div class="event-empty">No objects tracked</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>Scene State</h3>
+                </div>
+                <div class="panel-content">
+                    <div class="scene-info">
+                        <p class="scene-summary" id="sceneSummary">Waiting for scene data...</p>
+                        <div class="latency-grid">
+                            <div class="latency-item">
+                                <span class="latency-label">Detector</span>
+                                <span class="latency-value" id="detectorMs">0ms</span>
+                            </div>
+                            <div class="latency-item">
+                                <span class="latency-label">Tracker</span>
+                                <span class="latency-value" id="trackerMs">0ms</span>
+                            </div>
+                            <div class="latency-item">
+                                <span class="latency-label">VLM</span>
+                                <span class="latency-value" id="vlmMs">0ms</span>
+                            </div>
+                            <div class="latency-item">
+                                <span class="latency-label">Total</span>
+                                <span class="latency-value" id="totalMs">0ms</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const socket = io();
+        
+        let eventCount = 0;
+        let captionCount = 0;
+        
+        socket.on('connect', () => {
+            document.getElementById('statusDot').classList.add('connected');
+            document.getElementById('connectionStatus').textContent = 'Connected';
+            console.log('WebSocket connected');
+        });
+        
+        socket.on('disconnect', () => {
+            document.getElementById('statusDot').classList.remove('connected');
+            document.getElementById('connectionStatus').textContent = 'Disconnected';
+            console.log('WebSocket disconnected');
+        });
+        
+        socket.on('event', (data) => {
+            eventCount++;
+            addEventToFeed(data);
+            updateEventCount();
+        });
+        
+        socket.on('caption', (data) => {
+            captionCount++;
+            document.getElementById('captionText').textContent = data.caption;
+            document.getElementById('captionCount').textContent = captionCount;
+            
+            if (data.scene) {
+                updateSceneInfo(data.scene);
+            }
+        });
+        
+        socket.on('state_update', (data) => {
+            updateStats(data);
+        });
+        
+        function addEventToFeed(event) {
+            const feed = document.getElementById('eventFeed');
+            const empty = feed.querySelector('.event-empty');
+            if (empty) empty.remove();
+            
+            const eventEl = document.createElement('div');
+            eventEl.className = `event-item ${event.event_type}`;
+            
+            let description = '';
+            let eventTypeLabel = event.event_type.replace(/_/g, ' ');
+            
+            switch(event.event_type) {
+                case 'new_object':
+                    if (event.object) {
+                        description = `${event.object.class} appeared (ID: ${event.object.id})`;
+                    }
+                    break;
+                case 'object_left':
+                    description = `Object ID ${event.object_id} left`;
+                    break;
+                case 'action_complete':
+                    description = `Object ${event.object_id}: ${event.action}`;
+                    break;
+                case 'caption_update':
+                    if (event.scene) {
+                        description = `Scene: ${event.scene.summary || 'Updated'}`;
+                    }
+                    break;
+                default:
+                    description = JSON.stringify(event.data || {}).substring(0, 100);
+            }
+            
+            eventEl.innerHTML = `
+                <div class="event-type">${eventTypeLabel}</div>
+                <div class="event-description">${description}</div>
+                <div class="event-time">${new Date(event.timestamp).toLocaleTimeString()}</div>
+            `;
+            
+            feed.insertBefore(eventEl, feed.firstChild);
+            
+            while (feed.children.length > 50) {
+                feed.removeChild(feed.lastChild);
+            }
+        }
+        
+        function updateEventCount() {
+            document.getElementById('eventCount').textContent = `${eventCount} events`;
+        }
+        
+        function updateSceneInfo(scene) {
+            if (scene.summary) {
+                document.getElementById('sceneSummary').textContent = scene.summary;
+            }
+            
+            if (scene.active_objects) {
+                updateObjectsList(scene.active_objects);
+            }
+        }
+        
+        function updateObjectsList(objects) {
+            const list = document.getElementById('objectsList');
+            const empty = list.querySelector('.event-empty');
+            
+            if (!objects || objects.length === 0) {
+                if (!empty) {
+                    list.innerHTML = '<div class="event-empty">No objects tracked</div>';
+                }
+                document.getElementById('objectCount').textContent = '0';
+                return;
+            }
+            
+            if (empty) empty.remove();
+            document.getElementById('objectCount').textContent = objects.length;
+            
+            list.innerHTML = objects.slice(0, 10).map(obj => `
+                <div class="object-item">
+                    <div class="object-id">${obj.id}</div>
+                    <div class="object-info">
+                        <div class="object-class">${obj.class}</div>
+                        <div class="object-state">${obj.motion_state || 'unknown'}</div>
+                    </div>
+                    <div class="object-phase ${obj.action_phase || 'stable'}">${obj.action_phase === 'in_progress' ? '?' : '✓'}</div>
+                </div>
+            `).join('');
+        }
+        
+        function updateStats(data) {
+            if (data.latency_ms) {
+                document.getElementById('detectorMs').textContent = `${data.latency_ms.toFixed(0)}ms`;
+            }
+            
+            if (data.frame_id) {
+                document.getElementById('frameCount').textContent = data.frame_id;
+            }
+        }
+        
+        function fetchState() {
+            fetch('/api/state')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.frame_id) {
+                        document.getElementById('frameCount').textContent = data.frame_id;
+                    }
+                    if (data.scene) {
+                        updateSceneInfo(data.scene);
+                    }
+                })
+                .catch(() => {});
+        }
+        
+        function fetchStats() {
+            fetch('/api/stats')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.latency) {
+                        document.getElementById('detectorMs').textContent = `${data.latency.detector_ms.toFixed(0)}ms`;
+                        document.getElementById('trackerMs').textContent = `${data.latency.tracker_ms.toFixed(0)}ms`;
+                        document.getElementById('vlmMs').textContent = `${data.latency.vlm_ms.toFixed(0)}ms`;
+                        document.getElementById('totalMs').textContent = `${(data.latency.detector_ms + data.latency.tracker_ms).toFixed(0)}ms`;
+                    }
+                    if (data.frame_count) {
+                        document.getElementById('frameCount').textContent = data.frame_count;
+                    }
+                    if (data.caption_count) {
+                        document.getElementById('captionCount').textContent = data.caption_count;
+                    }
+                })
+                .catch(() => {});
+        }
+        
+        setInterval(fetchState, 500);
+        setInterval(fetchStats, 1000);
+        fetchState();
+        fetchStats();
+    </script>
+</body>
+</html>
